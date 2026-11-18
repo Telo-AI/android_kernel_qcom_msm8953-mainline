@@ -644,6 +644,16 @@ config MCHP_LAN966X_PCI
 	    - lan966x-miim (MDIO_MSCC_MIIM)
 	    - lan966x-switch (LAN966X_SWITCH)
 
+config NUWA_MCU_CONTROL
+	tristate "Nuwa robot motion controller power switch"
+	depends on GPIOLIB && OF && PROC_FS
+	help
+	  Say Y here to let the vendor robot service of Nuwa robots switch
+	  the motion controller on and off through /proc/nuwa_mcu_en.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called nuwa-mcu-control.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
