@@ -90,21 +90,6 @@
 		pinctrl-names = "default";
 	};
 
-	gpio-keys {
-		compatible = "gpio-keys";
-
-		pinctrl-0 = <&gpio_key_default>;
-		pinctrl-names = "default";
-
-		key-volume-up {
-			label = "Volume Up";
-			gpios = <&tlmm 85 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_VOLUMEUP>;
-			debounce-interval = <15>;
-			wakeup-source;
-		};
-	};
-
 	mcu-control {
 		compatible = "nuwa,mcu-control";
 		enable-gpios = <&tlmm 62 GPIO_ACTIVE_HIGH>;
@@ -312,13 +297,6 @@
 
 	face_touch_2_default: face-touch-2-default-state {
 		pins = "gpio129";
-		function = "gpio";
-		drive-strength = <2>;
-		bias-pull-up;
-	};
-
-	gpio_key_default: gpio-key-default-state {
-		pins = "gpio85";
 		function = "gpio";
 		drive-strength = <2>;
 		bias-pull-up;
