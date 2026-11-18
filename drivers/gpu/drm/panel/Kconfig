@@ -633,6 +633,14 @@ config DRM_PANEL_NOVATEK_NT39016
 	  Say Y here if you want to enable support for the panels built
 	  around the Novatek NT39016 display controller.
 
+config DRM_PANEL_NUWA_NB2
+	tristate "Nuwa AIR-H201 (nb2) DSI panels"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	help
+	  Say Y here if you want to enable support for the 1024x600 MIPI DSI
+	  video mode panels of the Nuwa AIR-H201 (nb2) robot.
+
 config DRM_PANEL_OLIMEX_LCD_OLINUXINO
 	tristate "Olimex LCD-OLinuXino panel"
 	depends on OF
