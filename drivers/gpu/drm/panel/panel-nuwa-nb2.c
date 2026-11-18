@@ -9,6 +9,7 @@
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/regulator/consumer.h>
 
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
@@ -25,8 +26,16 @@ struct nb2_panel_desc {
 struct nb2_panel {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
+	struct regulator_bulk_data *supplies;
+	struct gpio_desc *power_gpio;
+	struct gpio_desc *enable_gpio;
 	struct gpio_desc *reset_gpio;
 	const struct nb2_panel_desc *desc;
+};
+
+static const struct regulator_bulk_data nb2_panel_supplies[] = {
+	{ .supply = "vddio" },
+	{ .supply = "vdd" },
 };
 
 static inline struct nb2_panel *to_nb2_panel(struct drm_panel *panel)
@@ -70,18 +79,40 @@ static int nb2_panel_off(struct nb2_panel *ctx)
 	return dsi_ctx.accum_err;
 }
 
+static void nb2_panel_power_off(struct nb2_panel *ctx)
+{
+	gpiod_set_value_cansleep(ctx->enable_gpio, 0);
+	gpiod_set_value_cansleep(ctx->power_gpio, 0);
+	msleep(200);
+	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+	msleep(20);
+	regulator_bulk_disable(ARRAY_SIZE(nb2_panel_supplies), ctx->supplies);
+}
+
 static int nb2_panel_prepare(struct drm_panel *panel)
 {
 	struct nb2_panel *ctx = to_nb2_panel(panel);
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
+	ret = regulator_bulk_enable(ARRAY_SIZE(nb2_panel_supplies), ctx->supplies);
+	if (ret < 0) {
+		dev_err(dev, "Failed to enable regulators: %d\n", ret);
+		return ret;
+	}
+
+	/* The power-up order and delays of the vendor bootloader */
+	gpiod_set_value_cansleep(ctx->power_gpio, 1);
+	msleep(200);
+	gpiod_set_value_cansleep(ctx->enable_gpio, 1);
+	msleep(20);
+
 	nb2_panel_reset(ctx);
 
 	ret = nb2_panel_on(ctx);
 	if (ret < 0) {
 		dev_err(dev, "Failed to initialize panel: %d\n", ret);
-		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+		nb2_panel_power_off(ctx);
 		return ret;
 	}
 
@@ -98,7 +129,7 @@ static int nb2_panel_unprepare(struct drm_panel *panel)
 	if (ret < 0)
 		dev_err(dev, "Failed to un-initialize panel: %d\n", ret);
 
-	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+	nb2_panel_power_off(ctx);
 
 	return 0;
 }
@@ -141,6 +172,21 @@ static int nb2_panel_probe(struct mipi_dsi_device *dsi)
 
 	ctx->desc = of_device_get_match_data(dev);
 
+	ret = devm_regulator_bulk_get_const(dev, ARRAY_SIZE(nb2_panel_supplies),
+					    nb2_panel_supplies, &ctx->supplies);
+	if (ret < 0)
+		return ret;
+
+	ctx->power_gpio = devm_gpiod_get(dev, "power", GPIOD_OUT_LOW);
+	if (IS_ERR(ctx->power_gpio))
+		return dev_err_probe(dev, PTR_ERR(ctx->power_gpio),
+				     "Failed to get power-gpios\n");
+
+	ctx->enable_gpio = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
+	if (IS_ERR(ctx->enable_gpio))
+		return dev_err_probe(dev, PTR_ERR(ctx->enable_gpio),
+				     "Failed to get enable-gpios\n");
+
 	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio))
 		return dev_err_probe(dev, PTR_ERR(ctx->reset_gpio),
@@ -155,6 +201,10 @@ static int nb2_panel_probe(struct mipi_dsi_device *dsi)
 			  MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_LPM;
 
 	ctx->panel.prepare_prev_first = true;
+
+	ret = drm_panel_of_backlight(&ctx->panel);
+	if (ret)
+		return dev_err_probe(dev, ret, "Failed to get backlight\n");
 
 	drm_panel_add(&ctx->panel);
 

@@ -637,6 +637,7 @@ config DRM_PANEL_NUWA_NB2
 	tristate "Nuwa AIR-H201 (nb2) DSI panels"
 	depends on OF
 	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
 	help
 	  Say Y here if you want to enable support for the 1024x600 MIPI DSI
 	  video mode panels of the Nuwa AIR-H201 (nb2) robot.
