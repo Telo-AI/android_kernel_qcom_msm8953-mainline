@@ -48,6 +48,59 @@
 	};
 };
 
+&i2c_3 {
+	status = "okay";
+
+	touchscreen@40 {
+		compatible = "silead,gsl1680";
+		reg = <0x40>;
+
+		interrupts-extended = <&tlmm 65 IRQ_TYPE_EDGE_FALLING>;
+		power-gpios = <&tlmm 64 GPIO_ACTIVE_HIGH>;
+		avdd-supply = <&pm8953_l10>;
+
+		firmware-name = "silead/gslx680-nuwa-nb2.fw";
+		touchscreen-size-x = <1024>;
+		touchscreen-size-y = <600>;
+		silead,max-fingers = <10>;
+	};
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&pm8953_s3>;
+
+	status = "okay";
+
+	panel@0 {
+		/* lk2nd prepends the compatible of the detected panel variant */
+		compatible = "nuwa,nb2-panel";
+		reg = <0>;
+
+		reset-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&panel_in>;
+};
+
+&mdss_dsi0_phy {
+	vcca-supply = <&pm8953_l3>;
+
+	status = "okay";
+};
+
 &hsusb_phy {
 	vdd-supply = <&pm8953_l3>;
 	vdda-pll-supply = <&pm8953_l7>;
@@ -59,6 +112,13 @@
 &rpm_requests {
 	regulators {
 		compatible = "qcom,rpm-pm8953-regulators";
+
+		/* Also feeds L1-L3, so it must never be switched off */
+		pm8953_s3: s3 {
+			regulator-min-microvolt = <1225000>;
+			regulator-max-microvolt = <1225000>;
+			regulator-always-on;
+		};
 
 		pm8953_l3: l3 {
 			regulator-min-microvolt = <925000>;
@@ -83,6 +143,11 @@
 
 		pm8953_l9: l9 {
 			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
+		pm8953_l10: l10 {
+			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 		};
 
