@@ -112,6 +112,18 @@
 	};
 };
 
+&i2c_2 {
+	status = "okay";
+
+	speaker_amp: audio-amplifier@34 {
+		compatible = "awinic,aw8898";
+		reg = <0x34>;
+		reset-gpios = <&tlmm 60 GPIO_ACTIVE_LOW>;
+		firmware-name = "nuwa/nb2/aw8898_cfg.bin";
+		#sound-dai-cells = <0>;
+	};
+};
+
 &i2c_3 {
 	status = "okay";
 
@@ -128,6 +140,12 @@
 		touchscreen-size-y = <600>;
 		silead,max-fingers = <10>;
 	};
+};
+
+&lpass {
+	firmware-name = "qcom/msm8953/nuwa/nb2/adsp.mdt";
+
+	status = "okay";
 };
 
 &mdss {
@@ -285,6 +303,36 @@
 	status = "okay";
 };
 
+/* Only external codecs: the amplifier and, later, the microphone ADCs */
+&sound_card {
+	model = "nuwa-nb2";
+	/delete-property/ audio-routing;
+
+	pinctrl-0 = <&pri_mi2s_default>, <&pri_mi2s_ws_default>;
+	pinctrl-names = "default";
+
+	status = "okay";
+
+	/delete-node/ primary-mi2s-dai-link;
+	/delete-node/ tertiary-mi2s-dai-link;
+
+	quinary-mi2s-dai-link {
+		link-name = "Quinary MI2S";
+
+		cpu {
+			sound-dai = <&q6afedai QUINARY_MI2S_RX>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+
+		codec {
+			sound-dai = <&speaker_amp>;
+		};
+	};
+};
+
 &tlmm {
 	gpio-reserved-ranges = <0 4>, <135 4>;
 
@@ -312,6 +360,20 @@
 	panel_default: panel-default-state {
 		pins = "gpio22", "gpio39", "gpio61";
 		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	pri_mi2s_default: pri-mi2s-default-state {
+		pins = "gpio91", "gpio93";
+		function = "pri_mi2s";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	pri_mi2s_ws_default: pri-mi2s-ws-default-state {
+		pins = "gpio92";
+		function = "pri_mi2s_ws";
 		drive-strength = <8>;
 		bias-disable;
 	};
