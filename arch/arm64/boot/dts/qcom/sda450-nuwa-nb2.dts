@@ -138,7 +138,7 @@
 		power-gpios = <&tlmm 64 GPIO_ACTIVE_HIGH>;
 		avdd-supply = <&pm8953_l10>;
 
-		firmware-name = "silead/gslx680-nuwa-nb2.fw";
+		firmware-name = "gslx680-nuwa-nb2.fw";
 		touchscreen-size-x = <1024>;
 		touchscreen-size-y = <600>;
 		silead,max-fingers = <10>;
