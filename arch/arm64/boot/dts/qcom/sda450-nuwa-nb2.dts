@@ -48,6 +48,18 @@
 		};
 	};
 
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pm8953_pwm 0 100000>;
+		brightness-levels = <0 255>;
+		num-interpolated-steps = <255>;
+		default-brightness-level = <255>;
+		enable-gpios = <&pm8953_gpios 4 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-0 = <&backlight_enable_default>;
+		pinctrl-names = "default";
+	};
+
 	/* Vendor input device names and key codes, kept for the stock key layouts */
 	face-touch-1 {
 		compatible = "nuwa,sensor-keys";
@@ -138,7 +150,16 @@
 		compatible = "nuwa,nb2-panel";
 		reg = <0>;
 
+		backlight = <&backlight>;
+		vdd-supply = <&pm8953_l17>;
+		vddio-supply = <&pm8953_l6>;
+
+		enable-gpios = <&tlmm 39 GPIO_ACTIVE_HIGH>;
+		power-gpios = <&tlmm 22 GPIO_ACTIVE_HIGH>;
 		reset-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
+
+		pinctrl-0 = <&panel_default>;
+		pinctrl-names = "default";
 
 		port {
 			panel_in: endpoint {
@@ -163,6 +184,31 @@
 	vdd-supply = <&pm8953_l3>;
 	vdda-pll-supply = <&pm8953_l7>;
 	vdda-phy-dpdm-supply = <&pm8953_l13>;
+
+	status = "okay";
+};
+
+&pm8953_gpios {
+	backlight_enable_default: backlight-enable-default-state {
+		pins = "gpio4";
+		function = "normal";
+		power-source = <0>;
+	};
+
+	backlight_pwm_default: backlight-pwm-default-state {
+		pins = "gpio8";
+		function = "dtest2";
+		power-source = <0>;
+		bias-disable;
+		output-low;
+	};
+};
+
+&pm8953_pwm {
+	qcom,dtest = <2 2>;
+
+	pinctrl-0 = <&backlight_pwm_default>;
+	pinctrl-names = "default";
 
 	status = "okay";
 };
@@ -221,6 +267,11 @@
 			regulator-max-microvolt = <3125000>;
 		};
 
+		pm8953_l17: l17 {
+			regulator-min-microvolt = <2850000>;
+			regulator-max-microvolt = <2850000>;
+		};
+
 		pm8953_l18: l18 {
 			regulator-min-microvolt = <2900000>;
 			regulator-max-microvolt = <3300000>;
@@ -262,6 +313,13 @@
 		function = "gpio";
 		drive-strength = <2>;
 		bias-pull-up;
+	};
+
+	panel_default: panel-default-state {
+		pins = "gpio22", "gpio39", "gpio61";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
 	};
 
 	pir_default: pir-default-state {
