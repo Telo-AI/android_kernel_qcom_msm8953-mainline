@@ -122,6 +122,35 @@
 		firmware-name = "nuwa/nb2/aw8898_cfg.bin";
 		#sound-dai-cells = <0>;
 	};
+
+	mic_adc1: audio-codec@40 {
+		compatible = "everest,es7210";
+		reg = <0x40>;
+		vdda-supply = <&pm8953_l18>;
+
+		clocks = <&q6afecc LPASS_CLK_ID_MCLK_2 LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
+		clock-names = "mclk";
+		assigned-clocks = <&q6afecc LPASS_CLK_ID_MCLK_2 LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
+		assigned-clock-rates = <12288000>;
+
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "Mic Array 1";
+	};
+
+	mic_adc0: audio-codec@42 {
+		compatible = "everest,es7210";
+		reg = <0x42>;
+		vdda-supply = <&pm8953_l18>;
+		everest,tdm-first;
+
+		clocks = <&q6afecc LPASS_CLK_ID_MCLK_2 LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
+		clock-names = "mclk";
+		assigned-clocks = <&q6afecc LPASS_CLK_ID_MCLK_2 LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
+		assigned-clock-rates = <12288000>;
+
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "Mic Array 0";
+	};
 };
 
 &i2c_3 {
@@ -225,6 +254,13 @@
 	status = "okay";
 };
 
+&q6afedai {
+	dai@17 {
+		reg = <QUATERNARY_MI2S_TX>;
+		qcom,sd-lines = <1>;
+	};
+};
+
 &rpm_requests {
 	regulators {
 		compatible = "qcom,rpm-pm8953-regulators";
@@ -308,13 +344,33 @@
 	model = "nuwa-nb2";
 	/delete-property/ audio-routing;
 
-	pinctrl-0 = <&pri_mi2s_default>, <&pri_mi2s_ws_default>;
+	pinctrl-0 = <&pri_mi2s_default>, <&pri_mi2s_ws_default>,
+		    <&sec_mi2s_default>, <&sec_mi2s_mclk_default>;
 	pinctrl-names = "default";
 
 	status = "okay";
 
 	/delete-node/ primary-mi2s-dai-link;
 	/delete-node/ tertiary-mi2s-dai-link;
+
+	/* Both ADCs share one data line in N LRCK TDM mode, as on the stock software */
+	quaternary-mi2s-dai-link {
+		link-name = "Quaternary MI2S";
+		convert-rate = <96000>;
+		convert-sample-format = "s24_le";
+
+		cpu {
+			sound-dai = <&q6afedai QUATERNARY_MI2S_TX>;
+		};
+
+		platform {
+			sound-dai = <&q6routing>;
+		};
+
+		codec {
+			sound-dai = <&mic_adc0>, <&mic_adc1>;
+		};
+	};
 
 	quinary-mi2s-dai-link {
 		link-name = "Quinary MI2S";
@@ -334,7 +390,7 @@
 };
 
 &tlmm {
-	gpio-reserved-ranges = <0 4>, <135 4>;
+	gpio-reserved-ranges = <0 4>;
 
 	face_touch_1_default: face-touch-1-default-state {
 		pins = "gpio131";
@@ -383,6 +439,20 @@
 		function = "gpio";
 		drive-strength = <2>;
 		bias-pull-up;
+	};
+
+	sec_mi2s_default: sec-mi2s-default-state {
+		pins = "gpio135", "gpio136", "gpio138";
+		function = "sec_mi2s";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	sec_mi2s_mclk_default: sec-mi2s-mclk-default-state {
+		pins = "gpio25";
+		function = "sec_mi2s_mclk_a";
+		drive-strength = <8>;
+		bias-disable;
 	};
 
 	/* Only TX and RX: GPIO 22 is a display power switch */
