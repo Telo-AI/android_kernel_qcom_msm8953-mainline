@@ -2642,6 +2642,20 @@
 			status = "disabled";
 		};
 
+		uart_6: serial@7af0000 {
+			compatible = "qcom,msm-uartdm-v1.4", "qcom,msm-uartdm";
+			reg = <0x07af0000 0x200>;
+			interrupts = <GIC_SPI 307 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&gcc GCC_BLSP2_UART2_APPS_CLK>,
+				 <&gcc GCC_BLSP2_AHB_CLK>;
+			clock-names = "core",
+				      "iface";
+			dmas = <&blsp2_dma 2>, <&blsp2_dma 3>;
+			dma-names = "tx", "rx";
+
+			status = "disabled";
+		};
+
 		i2c_5: i2c@7af5000 {
 			compatible = "qcom,i2c-qup-v2.2.1";
 			reg = <0x07af5000 0x600>;
