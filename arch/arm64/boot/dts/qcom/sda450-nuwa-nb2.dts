@@ -420,6 +420,13 @@
 		bias-disable;
 	};
 
+	pir_default: pir-default-state {
+		pins = "gpio63";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
 	pri_mi2s_default: pri-mi2s-default-state {
 		pins = "gpio91", "gpio93";
 		function = "pri_mi2s";
@@ -432,13 +439,6 @@
 		function = "pri_mi2s_ws";
 		drive-strength = <8>;
 		bias-disable;
-	};
-
-	pir_default: pir-default-state {
-		pins = "gpio63";
-		function = "gpio";
-		drive-strength = <2>;
-		bias-pull-up;
 	};
 
 	sec_mi2s_default: sec-mi2s-default-state {
