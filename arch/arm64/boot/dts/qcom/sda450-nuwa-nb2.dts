@@ -228,8 +228,8 @@
 
 		/* Also feeds L1-L3, so it must never be switched off */
 		pm8953_s3: s3 {
-			regulator-min-microvolt = <1225000>;
-			regulator-max-microvolt = <1225000>;
+			regulator-min-microvolt = <984000>;
+			regulator-max-microvolt = <1240000>;
 			regulator-always-on;
 		};
 
