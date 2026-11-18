@@ -13,6 +13,7 @@
 
 	aliases {
 		mmc0 = &sdhc_1;
+		serial1 = &uart_6;
 	};
 
 	chosen {
@@ -102,6 +103,14 @@
 			debounce-interval = <15>;
 			wakeup-source;
 		};
+	};
+
+	mcu-control {
+		compatible = "nuwa,mcu-control";
+		enable-gpios = <&tlmm 62 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-0 = <&mcu_enable_default>;
+		pinctrl-names = "default";
 	};
 
 	pir-sensor {
@@ -315,6 +324,13 @@
 		bias-pull-up;
 	};
 
+	mcu_enable_default: mcu-enable-default-state {
+		pins = "gpio62";
+		function = "gpio";
+		drive-strength = <6>;
+		bias-pull-up;
+	};
+
 	panel_default: panel-default-state {
 		pins = "gpio22", "gpio39", "gpio61";
 		function = "gpio";
@@ -328,6 +344,30 @@
 		drive-strength = <2>;
 		bias-pull-up;
 	};
+
+	/* Only TX and RX: GPIO 22 is a display power switch */
+	uart_6_default: uart-6-default-state {
+		pins = "gpio20", "gpio21";
+		function = "blsp_uart6";
+		drive-strength = <16>;
+		bias-disable;
+	};
+
+	uart_6_sleep: uart-6-sleep-state {
+		pins = "gpio20", "gpio21";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+};
+
+/* The motion controller link */
+&uart_6 {
+	pinctrl-0 = <&uart_6_default>;
+	pinctrl-1 = <&uart_6_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	status = "okay";
 };
 
 &usb3 {
