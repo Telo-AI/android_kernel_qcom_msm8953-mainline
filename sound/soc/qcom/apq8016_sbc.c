@@ -22,6 +22,14 @@
 
 #define MI2S_COUNT  (MI2S_QUINARY + 1)
 
+/* Back-end stream format, by default 48 kHz stereo S16_LE */
+struct apq8016_sbc_be_params {
+	unsigned int rate;
+	unsigned int channels;
+	snd_pcm_format_t format;
+	bool format_set;
+};
+
 struct apq8016_sbc_data {
 	struct snd_soc_card card;
 	void __iomem *mic_iomux;
@@ -31,6 +39,7 @@ struct apq8016_sbc_data {
 	bool jack_setup;
 	bool use_ibit_clk;
 	int mi2s_clk_count[MI2S_COUNT];
+	struct apq8016_sbc_be_params *be_params;
 };
 
 #define MIC_CTRL_TER_WS_SLAVE_SEL	BIT(21)
@@ -45,7 +54,6 @@ struct apq8016_sbc_data {
 #define SPKR_CTL_TLMM_WS_EN_SEL_MASK	GENMASK(19, 18)
 #define SPKR_CTL_TLMM_WS_EN_SEL_SEC	BIT(18)
 #define DEFAULT_MCLK_RATE		9600000
-#define MI2S_BCLK_RATE			1536000
 
 static struct snd_soc_jack_pin apq8016_sbc_jack_pins[] = {
 	{
@@ -223,13 +231,23 @@ static int msm8916_qdsp6_dai_init(struct snd_soc_pcm_runtime *rtd)
 	return apq8016_dai_init(rtd, qdsp6_dai_get_lpass_id(cpu_dai));
 }
 
+static const struct apq8016_sbc_be_params *
+apq8016_sbc_get_be_params(struct snd_soc_pcm_runtime *rtd)
+{
+	struct apq8016_sbc_data *data = snd_soc_card_get_drvdata(rtd->card);
+
+	return &data->be_params[rtd->dai_link - rtd->card->dai_link];
+}
+
 static int msm8916_qdsp6_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+	const struct apq8016_sbc_be_params *be = apq8016_sbc_get_be_params(rtd);
 	struct snd_soc_card *card = rtd->card;
 	struct apq8016_sbc_data *data = snd_soc_card_get_drvdata(card);
 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+	unsigned int bclk_rate;
 	int mi2s, ret;
 
 	mi2s = qdsp6_dai_get_lpass_id(cpu_dai);
@@ -249,7 +267,8 @@ static int msm8916_qdsp6_startup(struct snd_pcm_substream *substream)
 		snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_BC_FC | SND_SOC_DAIFMT_I2S);
 	}
 
-	ret = snd_soc_dai_set_sysclk(cpu_dai, qdsp6_get_bit_clk_id(data, mi2s), MI2S_BCLK_RATE, 0);
+	bclk_rate = be->rate * be->channels * snd_pcm_format_physical_width(be->format);
+	ret = snd_soc_dai_set_sysclk(cpu_dai, qdsp6_get_bit_clk_id(data, mi2s), bclk_rate, 0);
 	if (ret)
 		dev_err(card->dev, "Failed to enable LPAIF bit clk: %d\n", ret);
 	return ret;
@@ -288,10 +307,13 @@ static int msm8916_qdsp6_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	struct snd_interval *channels = hw_param_interval(params,
 					SNDRV_PCM_HW_PARAM_CHANNELS);
 	struct snd_mask *fmt = hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT);
+	const struct apq8016_sbc_be_params *be = apq8016_sbc_get_be_params(rtd);
 
-	rate->min = rate->max = 48000;
-	channels->min = channels->max = 2;
-	snd_mask_set_format(fmt, SNDRV_PCM_FORMAT_S16_LE);
+	rate->min = rate->max = be->rate;
+	channels->min = channels->max = be->channels;
+	if (be->format_set)
+		snd_mask_none(fmt);
+	snd_mask_set_format(fmt, be->format);
 
 	return 0;
 }
@@ -336,6 +358,53 @@ static const struct snd_soc_dapm_widget apq8016_sbc_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("Digital Mic2", NULL),
 };
 
+/* The same properties as simple-card's, read from each DAI link node */
+static int apq8016_sbc_parse_be_params(struct device *dev,
+				       struct apq8016_sbc_data *data)
+{
+	static const struct {
+		const char *name;
+		snd_pcm_format_t format;
+	} formats[] = {
+		{ "s16_le", SNDRV_PCM_FORMAT_S16_LE },
+		{ "s24_le", SNDRV_PCM_FORMAT_S24_LE },
+		{ "s32_le", SNDRV_PCM_FORMAT_S32_LE },
+	};
+	struct snd_soc_card *card = &data->card;
+	struct apq8016_sbc_be_params *be;
+	const char *name;
+	unsigned int i;
+
+	data->be_params = devm_kcalloc(dev, card->num_links,
+				       sizeof(*data->be_params), GFP_KERNEL);
+	if (!data->be_params)
+		return -ENOMEM;
+
+	be = data->be_params;
+	for_each_available_child_of_node_scoped(dev->of_node, np) {
+		be->rate = 48000;
+		be->channels = 2;
+		be->format = SNDRV_PCM_FORMAT_S16_LE;
+		of_property_read_u32(np, "convert-rate", &be->rate);
+		of_property_read_u32(np, "convert-channels", &be->channels);
+
+		if (!of_property_read_string(np, "convert-sample-format", &name)) {
+			for (i = 0; i < ARRAY_SIZE(formats); i++)
+				if (!strcmp(name, formats[i].name))
+					break;
+			if (i == ARRAY_SIZE(formats))
+				return dev_err_probe(dev, -EINVAL,
+						     "%pOF: unsupported format %s\n",
+						     np, name);
+			be->format = formats[i].format;
+			be->format_set = true;
+		}
+		be++;
+	}
+
+	return 0;
+}
+
 static int apq8016_sbc_platform_probe(struct platform_device *pdev)
 {
 	void (*add_ops)(struct snd_soc_card *card);
@@ -361,6 +430,10 @@ static int apq8016_sbc_platform_probe(struct platform_device *pdev)
 	card->num_controls = ARRAY_SIZE(apq8016_sbc_snd_controls);
 
 	ret = qcom_snd_parse_of(card);
+	if (ret)
+		return ret;
+
+	ret = apq8016_sbc_parse_be_params(dev, data);
 	if (ret)
 		return ret;
 
