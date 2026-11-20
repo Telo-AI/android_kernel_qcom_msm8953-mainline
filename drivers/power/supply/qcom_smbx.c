@@ -674,6 +674,8 @@ struct smb_init_register {
  * @init_seq_len:	Number of entries in @init_seq
  * @qg_base:		Absolute base of the QG fuel-gauge peripheral, or 0 on
  *			a PMIC where this driver has no gauge to read
+ * @usbin_i_uv_per_a:	Gain of the usbin_i channel in buck mode, in uV per
+ *			amp, or 0 where that channel already reads uA
  *
  * All values are taken from the Qualcomm downstream qpnp-smb2 / qpnp-smb5
  * drivers (smb_chg_param tables) so the current/voltage scaling is exact.
@@ -697,6 +699,7 @@ struct smb_variant {
 	const struct smb_init_register *init_seq;
 	int init_seq_len;
 	u16 qg_base;
+	u32 usbin_i_uv_per_a;
 };
 
 /**
@@ -945,12 +948,12 @@ static int smb_get_prop_charge_type(struct smb_chip *chip, int *val)
 	return 0;
 }
 
+/* The limit set for this input; ICL_STATUS reads 0 whenever AICL reruns */
 static inline int smb_get_current_limit(struct smb_chip *chip,
 					 unsigned int *val)
 {
 	int rc = regmap_read(chip->regmap,
-			     chip->base + chip->var->status_base + ICL_STATUS,
-			     val);
+			     chip->base + USBIN_CURRENT_LIMIT_CFG, val);
 
 	if (rc >= 0)
 		*val *= chip->var->current_scale_ua;
@@ -1129,6 +1132,7 @@ static int smb_get_property(struct power_supply *psy,
 			     union power_supply_propval *val)
 {
 	struct smb_chip *chip = power_supply_get_drvdata(psy);
+	int rc;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_MANUFACTURER:
@@ -1140,8 +1144,12 @@ static int smb_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		return smb_get_current_limit(chip, &val->intval);
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		return smb_get_iio_chan(chip, chip->usb_in_i_chan,
-					 &val->intval);
+		rc = smb_get_iio_chan(chip, chip->usb_in_i_chan, &val->intval);
+		if (rc < 0 || !chip->var->usbin_i_uv_per_a)
+			return rc;
+		val->intval = div_s64((s64)val->intval * 1000000,
+				      chip->var->usbin_i_uv_per_a);
+		return 0;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		return smb_get_iio_chan(chip, chip->usb_in_v_chan,
 					 &val->intval);
@@ -2376,6 +2384,7 @@ static const struct smb_variant smb_variant_pmi632 = {
 	.init_seq = pmi632_init_seq,
 	.init_seq_len = ARRAY_SIZE(pmi632_init_seq),
 	.qg_base = 0x4800,
+	.usbin_i_uv_per_a = 400000,	/* qpnp-smb5: 0.4 V/A in buck mode */
 };
 
 static int smb_init_hw(struct smb_chip *chip)
