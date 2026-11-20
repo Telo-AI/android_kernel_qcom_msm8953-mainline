@@ -1722,7 +1722,7 @@ static bool smb_fg_update(struct smb_chip *chip)
 
 		chip->fg_residue += (s64)i_ua * elapsed_ms;
 		chip->fg_learn_ua_ms += (s64)i_ua * elapsed_ms;
-		step = div_s64(chip->fg_residue, per_permyriad);
+		step = div64_s64(chip->fg_residue, per_permyriad);
 		chip->fg_residue -= step * per_permyriad;
 
 		chip->soc_permyriad += step;
