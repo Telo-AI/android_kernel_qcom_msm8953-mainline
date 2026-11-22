@@ -1847,8 +1847,8 @@ static void smb_fg_work(struct work_struct *work)
  * measured. It samples an open-circuit voltage twice under conditions we
  * cannot recreate here - once at power-on before anything draws, and again
  * whenever the PMIC has seen the current stay near zero for long enough - and
- * keeps both. Take the second in preference to the first, since the first can
- * be arbitrarily old, and fall back to the live sample if the PMIC holds
+ * keeps both. Take the second in preference to the first, since it is the more
+ * rested of the two, and fall back to the live sample if the PMIC holds
  * neither.
  */
 static int smb_fg_start(struct smb_chip *chip)
@@ -1858,6 +1858,7 @@ static int smb_fg_start(struct smb_chip *chip)
 		QG_S7_PON_OCV_V_DATA0,
 	};
 	int v_uv, i_ua, soc, rest_soc = -1, rest_uv = 0, rc, i;
+	unsigned int rest_reg = 0;
 
 	rc = devm_mutex_init(chip->dev, &chip->fg_lock);
 	if (rc)
@@ -1871,10 +1872,21 @@ static int smb_fg_start(struct smb_chip *chip)
 	chip->charge_full_uah = chip->batt_info->charge_full_design_uah;
 	chip->fg_learn_soc = -1;
 
-	/* The gauge's freshest rested capture, where it holds one. */
-	if (smb_qg_read_sample(chip, QG_S3_GOOD_OCV_V_DATA0, &v_uv, &i_ua) == 0) {
+	/*
+	 * The gauge's own measurement of the pack: its rested capture where it
+	 * holds one, else the power-on one, which pmi632 retakes at every boot.
+	 */
+	for (i = 0; i < ARRAY_SIZE(rest_ocv); i++) {
+		if (smb_qg_read_sample(chip, rest_ocv[i], &v_uv, &i_ua) < 0)
+			continue;
+
 		rest_soc = smb_ocv_to_permyriad(chip, smb_batt_ocv(chip, v_uv, i_ua));
+		if (rest_soc < 0)
+			continue;
+
+		rest_reg = rest_ocv[i];
 		rest_uv = v_uv;
+		break;
 	}
 
 	/*
@@ -1885,23 +1897,25 @@ static int smb_fg_start(struct smb_chip *chip)
 	 *
 	 * Prefer it, but do not believe it against the evidence. What is stored
 	 * is what a count had reached, and a count is only ever as good as the
-	 * corrections it received; what the gauge captured at rest is a
-	 * measurement of the pack itself. Where the two are far enough apart
-	 * that neither the table's temperature nor a session's drift explains
-	 * it, the measurement is the one describing the battery that is fitted
-	 * now - so take it, and say so, because a seed being overruled is worth
-	 * knowing about.
+	 * corrections it received; what the gauge captured at rest, or failing
+	 * that at power-on, is a measurement of the pack itself. Where the two
+	 * are far enough apart that neither the table's temperature nor a
+	 * session's drift explains it, the measurement is the one describing the
+	 * battery that is fitted now - so take it, and say so, because a seed
+	 * being overruled is worth knowing about.
 	 */
 	smb_fg_sdam_restore_full(chip);
 
 	if (smb_fg_sdam_restore(chip, &soc)) {
 		if (rest_soc >= 0 && abs(rest_soc - soc) > SMB_FG_SEED_DISAGREE) {
 			dev_info(chip->dev,
-				 "fg: stored %d.%02d%% disagrees with the rested %d.%02d%%, taking the measurement\n",
+				 "fg: stored %d.%02d%% disagrees with the %s %d.%02d%%, taking the measurement\n",
 				 soc / 100, soc % 100,
+				 rest_reg == QG_S3_GOOD_OCV_V_DATA0 ? "rested" : "power-on",
 				 rest_soc / 100, rest_soc % 100);
 			soc = rest_soc;
-			chip->fg_good_ocv_uv = rest_uv;
+			if (rest_reg == QG_S3_GOOD_OCV_V_DATA0)
+				chip->fg_good_ocv_uv = rest_uv;
 		}
 
 		chip->soc_permyriad = soc;
@@ -1909,30 +1923,19 @@ static int smb_fg_start(struct smb_chip *chip)
 		chip->fg_last = ktime_get_boottime();
 		dev_dbg(chip->dev, "fg: restored %d.%02d%% from sdam\n",
 			soc / 100, soc % 100);
-	} else {
-		for (i = 0; i < ARRAY_SIZE(rest_ocv); i++) {
-			if (smb_qg_read_sample(chip, rest_ocv[i], &v_uv, &i_ua) < 0)
-				continue;
-
-			soc = smb_ocv_to_permyriad(chip, smb_batt_ocv(chip, v_uv, i_ua));
-			if (soc < 0)
-				continue;
-
-			chip->soc_permyriad = soc;
-			chip->fg_ready = true;
-			/* so the first poll integrates rather than re-anchoring */
-			chip->fg_last = ktime_get_boottime();
-			/*
-			 * If this seed is the hardware rest-OCV the poll also
-			 * watches, record it so the first poll does not re-take
-			 * the same capture.
-			 */
-			if (rest_ocv[i] == QG_S3_GOOD_OCV_V_DATA0)
-				chip->fg_good_ocv_uv = v_uv;
-			dev_dbg(chip->dev, "fg: seeded at %d.%02d%% from %duV\n",
-				soc / 100, soc % 100, v_uv);
-			break;
-		}
+	} else if (rest_soc >= 0) {
+		chip->soc_permyriad = rest_soc;
+		chip->fg_ready = true;
+		/* so the first poll integrates rather than re-anchoring */
+		chip->fg_last = ktime_get_boottime();
+		/*
+		 * If this seed is the hardware rest-OCV the poll also watches,
+		 * record it so the first poll does not re-take the same capture.
+		 */
+		if (rest_reg == QG_S3_GOOD_OCV_V_DATA0)
+			chip->fg_good_ocv_uv = rest_uv;
+		dev_dbg(chip->dev, "fg: seeded at %d.%02d%% from %duV\n",
+			rest_soc / 100, rest_soc % 100, rest_uv);
 	}
 
 	/*
