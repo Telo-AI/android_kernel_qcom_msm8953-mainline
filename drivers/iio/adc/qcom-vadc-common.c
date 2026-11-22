@@ -100,6 +100,47 @@ static const struct vadc_map_pt adcmap_100k_104ef_104fb_1875_vref[] = {
 	{ 46,	125000 },
 };
 
+/*
+ * Voltage to temperature table for a 10k NTC (B 3440) with 30k pull up and
+ * 1.875V reference.
+ */
+static const struct vadc_map_pt adcmap_10k_3440_30k_pu_1875_vref[] = {
+	{ 1674,	-40000 },
+	{ 1611,	-35000 },
+	{ 1536,	-30000 },
+	{ 1450,	-25000 },
+	{ 1353,	-20000 },
+	{ 1248,	-15000 },
+	{ 1139,	-10000 },
+	{ 1027,	-5000 },
+	{ 918,	0 },
+	{ 812,	5000 },
+	{ 713,	10000 },
+	{ 623,	15000 },
+	{ 541,	20000 },
+	{ 469,	25000 },
+	{ 405,	30000 },
+	{ 350,	35000 },
+	{ 302,	40000 },
+	{ 261,	45000 },
+	{ 225,	50000 },
+	{ 195,	55000 },
+	{ 169,	60000 },
+	{ 147,	65000 },
+	{ 128,	70000 },
+	{ 112,	75000 },
+	{ 98,	80000 },
+	{ 86,	85000 },
+	{ 76,	90000 },
+	{ 67,	95000 },
+	{ 60,	100000 },
+	{ 53,	105000 },
+	{ 47,	110000 },
+	{ 42,	115000 },
+	{ 38,	120000 },
+	{ 34,	125000 },
+};
+
 static const struct vadc_map_pt adcmap7_die_temp[] = {
 	{ 857300, 160000 },
 	{ 820100, 140000 },
@@ -309,6 +350,10 @@ static int qcom_vadc_scale_hw_calib_therm(
 				const struct u32_fract *prescale,
 				const struct adc5_data *data,
 				u16 adc_code, int *result_mdec);
+static int qcom_vadc_scale_hw_calib_therm_30k_pu(
+				const struct u32_fract *prescale,
+				const struct adc5_data *data,
+				u16 adc_code, int *result_mdec);
 static int qcom_vadc7_scale_hw_calib_therm(
 				const struct u32_fract *prescale,
 				const struct adc5_data *data,
@@ -341,6 +386,8 @@ static const struct qcom_adc5_scale_type scale_adc5_fn[] = {
 					qcom_vadc7_scale_hw_calib_die_temp},
 	[SCALE_HW_CALIB_PM5_CHG_TEMP] = {qcom_vadc_scale_hw_chg5_temp},
 	[SCALE_HW_CALIB_PM5_SMB_TEMP] = {qcom_vadc_scale_hw_smb_temp},
+	[SCALE_HW_CALIB_THERM_30K_PULLUP] = {
+					qcom_vadc_scale_hw_calib_therm_30k_pu},
 };
 
 static int qcom_vadc_map_voltage_temp(const struct vadc_map_pt *pts,
@@ -580,6 +627,21 @@ static int qcom_vadc_scale_hw_calib_therm(
 	/* Map voltage to temperature from look-up table */
 	return qcom_vadc_map_voltage_temp(adcmap_100k_104ef_104fb_1875_vref,
 				 ARRAY_SIZE(adcmap_100k_104ef_104fb_1875_vref),
+				 voltage, result_mdec);
+}
+
+static int qcom_vadc_scale_hw_calib_therm_30k_pu(
+				const struct u32_fract *prescale,
+				const struct adc5_data *data,
+				u16 adc_code, int *result_mdec)
+{
+	int voltage;
+
+	voltage = qcom_vadc_scale_code_voltage_factor(adc_code,
+				prescale, data, 1000);
+
+	return qcom_vadc_map_voltage_temp(adcmap_10k_3440_30k_pu_1875_vref,
+				 ARRAY_SIZE(adcmap_10k_3440_30k_pu_1875_vref),
 				 voltage, result_mdec);
 }
 
